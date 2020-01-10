@@ -1,0 +1,191 @@
+---
+title: "MATH 199"
+author: "Bo Zhang"
+date: "5/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(picasso)
+library(MASS)
+library(Matrix)
+ds = c(256,512,1024)
+ns = c(100,200)
+
+l2s = c()
+FPs = c()
+FNs = c()
+for (n in ns) {
+  for (d in ds) {
+    true_theta = c(2,2,2,-1.5,-1.5,-1.5,2,2,2,2, rep(0, d-10))
+    
+    l2 = 0
+    FP = 0
+    FN = 0
+    for (i in 1:200){
+      
+      # generate data using rnorm
+      X = matrix(rnorm(n*d), nrow = n)
+      # generate labels with errors
+      Y = X %*% true_theta + rnorm(n, 0, 1.5)
+      
+      
+      fold = 5
+      result = picasso(X, Y, lambda.min.ratio = 0.001, method = 'l1')
+      lambdas = result$lambda
+      mean_val_error = c()
+      for (j in 1:length(lambdas)){
+        lambda = lambdas[j]
+        errors = c()
+        for (i in 1:fold){
+          start = as.integer((i-1)/fold*n)
+          end = as.integer(i/fold*n)
+          X_vali = X[(start+1):end,]
+          Y_vali = Y[(start+1):end,]
+          #print(start)
+          #print(end)
+          if (start == 0){
+            X_train = X[(end+1):n,]
+            Y_train = Y[(end+1):n,]
+          }
+          else if (end == n){
+            X_train = X[1:start,]
+            Y_train = Y[1:start,]
+          }
+          else{
+            X_train = rbind(X[1:start,], X[(end+1):n,])
+            Y_train = c(Y[1:start,], Y[(end+1):n,])
+          }
+          #print(dim(X_train))
+          #print(length(Y_train))
+          est_beta = picasso(X_train, Y_train, lambda = lambda)$beta
+          
+          est_Y = X_vali %*% est_beta
+          # mean sum of squared error
+          errors[i] = sum((est_Y - Y_vali) ** 2) / length(Y_vali)
+        }  
+        # mean cross validation errors
+        mean_val_error[j] = mean(errors)
+      }
+      min_index = which.min(mean_val_error)
+      lambda = lambdas[min_index]  
+      
+      ## Useing the lambda after cross validation to predict theta
+      
+      
+      result_optimal = picasso(X, Y, lambda = lambda, method = 'l1')
+      pred_theta = result_optimal$beta
+      
+ 
+      l2 = l2 + norm(as.matrix(pred_theta - true_theta), type = '2')
+      
+      FP = FP + sum((true_theta == 0) & (pred_theta != 0))
+      
+      FN = FN + sum((true_theta != 0) & (pred_theta == 0))
+    }
+    
+    l2s = c(l2s, l2/200)
+    FPs = c(FPs, FP/200)
+    FNs = c(FNs, FN/200)
+    
+  }
+}
+```
+```{r}
+ds = c(256,512,1024)
+ns = c(100,200)
+
+l2s = c()
+FPs = c()
+FNs = c()
+for (n in ns) {
+  for (d in ds) {
+    true_theta = c(2,2,2,-1.5,-1.5,-1.5,2,2,2,2, rep(0, d-10))
+    
+    l2 = 0
+    FP = 0
+    FN = 0
+    
+    m = matrix(rep(0,d*d), nrow=d, ncol=d)
+    for (i in 1:d){
+    	for (j in :1:d){
+    		m[i,j] = (0.5)**(abs(i-j))
+    	}
+    }
+    
+    
+    for (i in 1:200){
+      
+      # generate data with covariance
+      X = mvrnorm(n = n, mu = rep(0,d), Sigma = m)
+      
+      # generate labels with errors
+      Y = X %*% true_theta + rnorm(n, 0, 1.5)
+      
+      
+      fold = 5
+      result = picasso(X, Y, lambda.min.ratio = 0.001, method = 'l1')
+      lambdas = result$lambda
+      mean_val_error = c()
+      for (j in 1:length(lambdas)){
+        lambda = lambdas[j]
+        errors = c()
+        for (i in 1:fold){
+          start = as.integer((i-1)/fold*n)
+          end = as.integer(i/fold*n)
+          X_vali = X[(start+1):end,]
+          Y_vali = Y[(start+1):end,]
+          #print(start)
+          #print(end)
+          if (start == 0){
+            X_train = X[(end+1):n,]
+            Y_train = Y[(end+1):n,]
+          }
+          else if (end == n){
+            X_train = X[1:start,]
+            Y_train = Y[1:start,]
+          }
+          else{
+            X_train = rbind(X[1:start,], X[(end+1):n,])
+            Y_train = c(Y[1:start,], Y[(end+1):n,])
+          }
+          #print(dim(X_train))
+          #print(length(Y_train))
+          est_beta = picasso(X_train, Y_train, lambda = lambda)$beta
+          
+          est_Y = X_vali %*% est_beta
+          # mean sum of squared error
+          errors[i] = sum((est_Y - Y_vali) ** 2) / length(Y_vali)
+        }  
+        # mean cross validation errors
+        mean_val_error[j] = mean(errors)
+      }
+      min_index = which.min(mean_val_error)
+      lambda = lambdas[min_index]  
+      
+      ## Useing the lambda after cross validation to predict theta
+      
+      
+      result_optimal = picasso(X, Y, lambda = lambda, method = 'l1')
+      pred_theta = result_optimal$beta
+      
+ 
+      l2 = l2 + norm(as.matrix(pred_theta - true_theta), type = '2')
+      
+      FP = FP + sum((true_theta == 0) & (pred_theta != 0))
+      
+      FN = FN + sum((true_theta != 0) & (pred_theta == 0))
+    }
+    
+    l2s = c(l2s, l2/200)
+    FPs = c(FPs, FP/200)
+    FNs = c(FNs, FN/200)
+    
+  }
+}
+```
+

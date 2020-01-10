@@ -1,0 +1,86 @@
+---
+title: "Picasso"
+author: "Xuanyu Wu"
+date: "2019/5/16"
+output: html_document
+---
+```{r}
+library(picasso)
+library(MASS)
+library(Matrix)
+
+#lambda = 1
+n = 1000
+d = 100
+X = matrix(rnorm(n*d), nrow = n)
+true_beta = c(seq(1,10,1), rep(0,90))
+Y = X %*% true_beta
+result = picasso(X, Y, lambda.min.ratio = 0.001)
+#est_beta = result$beta
+#est_beta
+length(result$beta[,1])
+```
+```{r}
+n = 1000
+d = 100
+# generate data using rnorm
+X = matrix(rnorm(n*d), nrow = n)
+# sparse true beta
+true_beta = c(seq(1,10,1), rep(0,90))
+# generate labels with errors
+Y = X %*% true_beta + rnorm(n)
+```
+
+```{r}
+fold = 5
+result = picasso(X, Y, lambda.min.ratio = 0.001)
+lambdas = result$lambda
+mean_val_error = c()
+for (j in 1:length(lambdas)){
+  lambda = lambdas[j]
+  errors = c()
+  for (i in 1:fold){
+    start = as.integer((i-1)/fold*n)
+    end = as.integer(i/fold*n)
+    X_vali = X[(start+1):end,]
+    Y_vali = Y[(start+1):end,]
+    #print(start)
+    #print(end)
+    if (start == 0){
+      X_train = X[(end+1):n,]
+      Y_train = Y[(end+1):n,]
+    }
+    else if (end == n){
+      X_train = X[1:start,]
+      Y_train = Y[1:start,]
+    }
+    else{
+      X_train = rbind(X[1:start,], X[(end+1):n,])
+      Y_train = c(Y[1:start,], Y[(end+1):n,])
+    }
+    #print(dim(X_train))
+    #print(length(Y_train))
+    est_beta = picasso(X_train, Y_train, lambda = lambda)$beta
+    
+    est_Y = X_vali %*% est_beta
+    # mean sum of squared error
+    errors[i] = sum((est_Y - Y_vali) ** 2) / length(Y_vali)
+  }  
+  # mean cross validation errors
+  mean_val_error[j] = mean(errors)
+}
+mean_val_error
+```
+```{r}
+min_index = which.min(mean_val_error)
+lambdas[min_index]  
+```
+
+```{r}
+(log(lambdas[1]) - log(lambdas[2]))
+```
+
+```{r}
+(log(lambdas[2]) - log(lambdas[3]))
+```
+

@@ -1,0 +1,211 @@
+---
+title: "scdADMM"
+author: "Bo Zhang"
+date: "5/31/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(MASS)
+library(Matrix)
+library(glmnet)
+```
+
+```{r}
+norm_vec = function(x) sqrt(sum(x^2))
+
+## ??? how to define the convergence criterion
+## check convergence criterion of loops for m
+
+### check relative change rate
+inner.conv = function(beta.old, beta.new, criterion = 1e-3) {
+
+  ## sometimes beta will shrink to 0, so we reject using relative size
+  if (norm_vec(beta.old) == 0) {
+    return(FALSE)
+  }
+  if ((norm_vec(beta.old - beta.new)/norm_vec(beta.old)) < criterion) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+
+## check convergence condition of loops for k
+stopping_condition = function(beta, old_z, new_z, theta, sigma, e1, e2, X, y){
+  n = length(old_z)
+  p = length(beta)
+  X_beta = X %*% beta
+  cond1 = norm_vec(X_beta + new_z - y) <= sqrt(n) * e1 + e2 * max(norm_vec(X_beta), norm_vec(new_z), norm_vec(y))
+  cond2 = sigma * norm_vec(t(X) %*% (new_z - old_z)) <= sqrt(p) * e1 + e2 * norm_vec(t(X) %*% theta)
+  if (cond1 & cond2){
+    return (TRUE)
+  } else {
+    return (FALSE)
+  }
+}
+
+## update z with proxy function
+update_z = function(beta, z, theta, sigma, X, y){
+  new_z = c()
+  for (i in 1:length(z)){
+    first = y[i] - X[i,] %*% beta + 1 / sigma * theta[i]
+    second = length(z) * sigma
+    new_z[i] = as.numeric(prox(first, second))
+  }
+  return (new_z)
+}
+
+## update theta
+update_theta = function(beta, z, theta, sigma, X, y){
+  new_theta = theta - sigma * (X %*% beta + z - y)
+  return (new_theta)
+}
+
+prox = function(epsilon, alpha, tau = 0.5){
+  return (epsilon - max((tau - 1) / alpha, min(epsilon, tau / alpha)))
+}
+
+
+
+
+
+## Function Function Function Function
+
+
+## if lasso penalty, we assume equal weights
+scdADMM = function(X, Y, max.iter = 1e5, error1 = 1e-3, error2 = 1e-3, method = 'lasso', lambda) {
+  if (missing(lambda)) {
+    lambda = cv.glmnet(X,Y, type.measure = "mse", nfolds = 5)$lambda.min
+  }
+  
+  
+  n = dim(X)[1]
+  d = dim(X)[2]
+  
+  if (method == 'lasso') {
+    w = rep(1, d)
+  }
+  
+  
+  ## initialization with one pass of glemnet
+  glmnet.beta = glmnet(X, Y, lambda = lambda, alpha = 1)$beta
+  BETA = glmnet.beta
+  z = Y - X %*% BETA
+  theta = rep(0,n)
+  
+  
+  #BETA = rep(0,d)
+  alpha = 3.7
+  for (i in 1:d) {
+    if(abs(BETA[i]) <= lambda) {
+      w[i] = lambda
+    } else {
+      w[i] = max(alpha*lambda - abs(BETA[i]), 0)/(alpha-1)
+    }
+  }
+  
+  ## ???
+  sigma = 1
+  
+  ## repeats until convergence for k
+  for(iter in 1:max.iter) {
+    print(iter)
+    beta = BETA
+    ## repeats until convergence for m
+    while(TRUE) {
+      beta.new = beta
+      ## update beta.j
+      for (j in 1:length(beta)) {
+        outer.sum = 0
+        for (i in 1:n) {
+          if (j == 1) {
+            inner.sum = X[i,(j+1):length(beta)]%*%beta.new[(j+1):length(beta)]
+          } else if (j == length(beta)) {
+            inner.sum = X[i,1:j-1]%*%beta.new[1:j-1]
+          } else {
+            inner.sum = X[i,1:j-1]%*%beta.new[1:j-1] + X[i,(j+1):length(beta)]%*%beta.new[(j+1):length(beta)]
+          }
+          outer.sum = outer.sum + X[i,j]*(theta[i] + sigma*(Y[i] - z[i] - inner.sum))
+        }
+        shrink.part1 = sign(outer.sum)
+        shrink.part2 = max(abs(outer.sum) - w[j], 0)
+        
+        beta.new[j] = shrink.part1*shrink.part2/(sigma*(norm_vec(X[,j])**2))
+      }
+      
+      ## check convergence condition for m loop
+      if(inner.conv(beta, beta.new)) {
+        beta = beta.new
+        break;
+      } else {
+        beta = beta.new 
+      }
+    }
+    BETA = beta
+    
+    z.new = update_z(BETA, z, theta, sigma, X, Y)
+      
+    theta = update_theta(BETA, z, theta, sigma, X, Y)
+    if (stopping_condition(BETA, z, z.new, theta, sigma, error1, error2, X,Y)) {
+      print(iter)
+      break;
+    } else {
+      z = z.new
+    }
+  }
+  
+  return(BETA)
+  
+}
+```
+
+```{r}
+
+n = 100
+d = 256
+true_beta = c(2,2,2,-1.5,-1.5,-1.5,2,2,2,2, rep(0, d-10))
+# generate data using rnorm
+X = matrix(rnorm(n*d), nrow = n)
+# generate labels with errors
+Y = X %*% true_beta + rnorm(n, 0, 1.5)
+```
+
+```{r}
+pred_beta = scdADMM(X, Y, max.iter = 1e2, error1 = 1e-3, error2 = 1e-3, method = 'lasso')
+```
+```{r}
+lambda = cv.glmnet(X,Y, type.measure = "mse", nfolds = 5)$lambda.min
+glmnet_beta = glmnet(X, Y, lambda = lambda, alpha = 1)$beta
+```
+
+
+```{r}
+cat('l2 norm error of ADMM:', norm(true_beta- pred_beta, type = '2'), '\n')
+cat('l2 norm error of glmnet:', norm(true_beta - glmnet_beta, type = '2'), '\n')
+cat('false positives of ADMM:', sum((true_beta == 0) & (pred_beta != 0)), '\n')
+cat('false positives of glmnet:', sum((true_beta == 0) & (glmnet_beta != 0)), '\n')
+cat('false negatives of ADMM:', sum((true_beta != 0) & (pred_beta == 0)), '\n')
+cat('false negatives of glmnet:', sum((true_beta != 0) & (glmnet_beta == 0)), '\n')
+```
+```{r}
+pred_y = X%*%pred_beta
+```
+
+```{r}
+norm_vec(pred_y - Y)
+norm_vec(X %*% true_beta - Y)
+```
+
+
+```{r}
+pred_glmnet = X%*%glmnet_beta
+norm_vec(pred_glmnet - Y)
+```
+```{r}
+pred_beta
+```
+

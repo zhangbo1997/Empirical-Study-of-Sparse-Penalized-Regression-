@@ -1,0 +1,156 @@
+---
+title: "CV.GLMNET"
+author: "Bo Zhang"
+date: "5/31/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(MASS)
+library(Matrix)
+library(glmnet)
+
+ns = c(100,200)
+ds = c(256,512,1024)
+
+l2s = c()
+FPs = c()
+FNs = c()
+for (i in 1:length(ns)) {
+  n = ns[i]
+  print(n)
+  for (j in 1:length(ds)) {
+    d = ds[j]
+    print(d)
+    true_beta = c(2,2,2,-1.5,-1.5,-1.5,2,2,2,2, rep(0, d-10))
+    
+    l2 = 0
+    FP = 0
+    FN = 0
+    for (i in 1:200){
+      
+      # generate data using rnorm
+      X = matrix(rnorm(n*d), nrow = n)
+      # generate labels with errors
+      Y = X %*% true_beta + rnorm(n, 0, 1.5)
+      
+      
+      fold = 5
+      ## alpha is default to be 1, that is lasso penalty
+      lambda = cv.glmnet(X,Y, type.measure = "mse", nfolds = fold)$lambda.min
+
+      result_optimal = glmnet(X, Y, lambda = lambda, alpha = 1)
+      pred_beta = result_optimal$beta
+      
+      
+      l2 = l2 + norm(as.matrix(pred_beta - true_beta), type = '2')
+  
+
+      FP = FP + sum((true_beta == 0) & (pred_beta != 0))
+
+      FN = FN + sum((true_beta != 0) & (pred_beta == 0))
+    }
+    
+    l2s = c(l2s, l2/200)
+    FPs = c(FPs, FP/200)
+    FNs = c(FNs, FN/200)
+    
+  }
+}
+
+```
+
+```{r}
+l2s.table = matrix(l2s,nrow = 3, ncol = 2)
+l2s.table
+```
+
+```{r}
+FPs.table = matrix(FPs,nrow = 3, ncol = 2)
+FPs.table
+```
+```{r}
+FNs.table = matrix(FNs,nrow = 3, ncol = 2)
+FNs.table
+```
+
+```{r}
+ns = c(100,200)
+ds = c(256,512,1024)
+
+
+l2s.cov = c()
+FPs.cov = c()
+FNs.cov = c()
+for (i in 1:length(ns)) {
+  n = ns[i]
+  print(n)
+  for (j in 1:length(ds)) {
+    d = ds[j]
+    print(d)
+    
+    true_beta = c(2,2,2,-1.5,-1.5,-1.5,2,2,2,2, rep(0, d-10))
+    
+    l2 = 0
+    FP = 0
+    FN = 0
+    
+    m = matrix(rep(0,d*d), nrow=d, ncol=d)
+    for (i in 1:d){
+    	for (j in 1:d){
+    		m[i,j] = (0.5)**(abs(i-j))
+    	}
+    }
+    
+    
+    for (i in 1:200){
+      
+      # generate data with covariance
+      X = mvrnorm(n = n, mu = rep(0,d), Sigma = m)
+      
+      # generate labels with errors
+      Y = X %*% true_beta + rnorm(n, 0, 1.5)
+      
+      
+      fold = 5
+      
+      ## alpha is default to be 1, that is lasso penalty
+      lambda = cv.glmnet(X,Y, type.measure = "mse", nfolds = fold)$lambda.min
+      result_optimal = glmnet(X, Y, lambda = lambda, alpha = 1)
+      pred_beta = result_optimal$beta
+      
+      
+      l2 = l2 + norm(as.matrix(pred_beta - true_beta), type = '2')
+      
+      FP = FP + sum((true_beta == 0) & (pred_beta != 0))
+      
+      FN = FN + sum((true_beta != 0) & (pred_beta == 0))
+    }
+    
+    l2s.cov = c(l2s.cov, l2/200)
+    FPs.cov = c(FPs.cov, FP/200)
+    FNs.cov = c(FNs.cov, FN/200)
+    
+  }
+}
+```
+
+
+```{r}
+l2s.cov.table = matrix(l2s.cov,nrow = 3, ncol = 2)
+l2s.cov.table
+```
+
+```{r}
+FPs.cov.table = matrix(FPs.cov,nrow = 3, ncol = 2)
+FPs.cov.table
+```
+
+```{r}
+FNs.cov.table = matrix(FNs.cov,nrow = 3, ncol = 2)
+FNs.cov.table
+```

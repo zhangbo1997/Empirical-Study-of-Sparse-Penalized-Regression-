@@ -1,0 +1,70 @@
+---
+title: "Lasso"
+author: "Xuanyu Wu"
+date: "2019/5/8"
+output: pdf_document
+---
+```{r}
+#install.packages("devtools")
+library(devtools)
+#devtools::install_github("XiaoouPan/ILAMM")
+library(ILAMM)
+library(RcppArmadillo)
+```
+
+
+```{r}
+# input true beta, sample size, number of simulations, and alpha 
+# output a sequence of 1 or 0's. For each entry, 1 means true parameter is inside the confidence interval, 0 means outside the confidence interval
+beta.in.interval = function(beta, n, k, B = 1000, alpha = 0.05){
+  d = length(beta)
+  nrows = n
+  ncol = d
+  # store estimated betas
+  betas = list()
+  for (j in 1:B){
+    #print(j)
+    # generate sample from true beta every time
+    X = matrix(rnorm(n*d), nrow = n)
+    Y = X %*% beta + rnorm(n)
+    # estimate beta
+    beta.hat = as.numeric(cvNcvxReg(X, Y, penalty = "SCAD", intercept = FALSE)$beta)[2:(k+1)]
+    betas = append(betas, beta.hat)
+  }
+  
+  in.interval = c()
+  for (i in 1:k){
+    # store estimated parameter
+    simulated.betas = c()
+    for (j in 1:B){
+      #print(j)
+      simulated.betas[j] = as.numeric(betas[i+(j-1)*k])
+    }
+    conf.interval = as.numeric(quantile(simulated.betas, probs = c(alpha / 2, 1 - (alpha / 2))))
+    # check if true parameter is inside the confidence interval 
+    if ((beta[i] >= conf.interval[1]) & (beta[i] <= conf.interval[2])){
+      in.interval[i] = 1
+    }
+    else{
+      in.interval[i] = 0
+    }
+  }
+  print(in.interval)
+  return (in.interval)
+}
+```
+
+```{r}
+beta = c(seq(1,10,1), rep(0, 90))
+result = beta.in.interval(beta, n = 200, k =20, B = 50)
+```
+
+```{r}
+C = 100
+total = rep(0, length(beta))
+for (i in 1:C){
+  total = total + beta.in.interval(beta, 200)
+}
+total
+```
+
